@@ -20,14 +20,6 @@ weekday_map = {
     "fredag": 5
 }
 
-street_names = [
-    "Cedergrensvägen",
-    "Kransbindarvägen",
-    "Bäckvägen",
-    "Fastlagsvägen"
-]
-
-
 def get_street_info(street_name):
 
     url = f"https://openparking.stockholm.se/LTF-Tolken/v1/servicedagar/street/{street_name}?outputFormat=json"
@@ -167,8 +159,7 @@ def home():
             print(result)
     return render_template(
         "index.html",
-        result=result,
-        street_names=street_names
+        result=result
     )
 
 @app.route("/autocomplete")
