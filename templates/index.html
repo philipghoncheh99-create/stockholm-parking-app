@@ -44,10 +44,39 @@
             {{ result.status }}
         </div>
 
+        <h3>Regler på gatan</h3>
+
+        {% for rule in result.rules %}
+
         <p>
+
+        {% if rule.status_class == "red" %}
+        🔴
+        {% elif rule.status_class == "orange" %}
+        🟠
+        {% else %}
+        🟢
+        {% endif %}
+
+        {{ rule.weekday.title() }}
+        {{ "%02d"|format(rule.start_hour) }}:00 -
+        {{ "%02d"|format(rule.end_hour) }}:00
+
+        </p>
+
+        {% endfor %}
+
+        <!-- <p>
             <strong>Servicetid:</strong><br>
             {{ result.start_time }} - {{ result.end_time }}
         </p>
+
+       {% if result.parking_allowed_again %}
+        <div class="parking-info">
+        ✅ Du får parkera igen:
+        <strong>{{ result.parking_allowed_again }}</strong>
+        </div>  
+        {% endif %}
 
         <p>
             <strong>Nästa städdag:</strong><br>
@@ -57,8 +86,11 @@
         <p>
             <strong>Flytta bilen senast:</strong><br>
             {{ result.move_date }}
-        </p>
+        </p> -->
 
+        <p>
+    Kartan visar aktuell status för varje del av gatan.
+        </p>
     </div>
 
     <div id="map"></div>
@@ -137,15 +169,31 @@ let group = [];
 
 segments.forEach(segment => {
 
+    let segmentColor = "green";
+
+    if (segment.status_class === "orange") {
+        segmentColor = "orange";
+    }
+
+    if (segment.status_class === "red") {
+        segmentColor = "red";
+    }
+
     const line = L.polyline(
-        segment,
+        segment.coordinates,
         {
-            color: color,
+            color: segmentColor,
             weight: 8
         }
     ).addTo(map);
 
     group.push(line);
+
+    line.bindPopup(`
+    <b>${segment.weekday}</b><br>
+    ${segment.start_hour}:00 - ${segment.end_hour}:00<br>
+    ${segment.status}
+`);
 
 });
 

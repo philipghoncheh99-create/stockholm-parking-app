@@ -1,7 +1,8 @@
+import json
+import sqlite3
 from datetime import datetime, timedelta
 
 import requests
-import sqlite3
 from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
@@ -62,12 +63,18 @@ def get_parking_info(cleaning_day, start_hour, end_hour):
     status = "🟢 Parkering tillåten"
     status_class = "green"
 
+    parking_allowed_again = None
+
     if days_until == 0:
 
         if start_hour <= current_hour < end_hour:
+
             status = "🔴 Parkeringsförbud idag"
             status_class = "red"
 
+            parking_allowed_again = f"Idag {end_hour:02d}:00"
+                
+            
         else:
             next_cleaning = today + timedelta(days=7)
             move_date = next_cleaning - timedelta(days=1)
@@ -83,7 +90,8 @@ def get_parking_info(cleaning_day, start_hour, end_hour):
         "status": status,
         "status_class": status_class,
         "cleaning_date": next_cleaning.strftime("%d/%m/%Y"),
-        "move_date": move_date.strftime("%d/%m/%Y")
+        "move_date": move_date.strftime("%d/%m/%Y"),
+        "parking_allowed_again": parking_allowed_again
     }
 
 @app.route("/", methods=["GET", "POST"])
@@ -115,36 +123,75 @@ def home():
             end_hour = props["END_TIME"] // 100
 
             result = get_parking_info(
-            cleaning_day,
-            start_hour,
-            end_hour
+                cleaning_day,
+                start_hour,
+                end_hour
             )
 
             result["street"] = props["STREET_NAME"]
 
-            start_time = str(props["START_TIME"]).zfill(4)
-            end_time = str(props["END_TIME"]).zfill(4)
-
-            result["start_time"] = f"{start_time[:2]}:{start_time[2:]}"
-            result["end_time"] = f"{end_time[:2]}:{end_time[2:]}"
-
-            result["lat"] = coords[0][1]
-            result["lng"] = coords[0][0]
-
-            result["coordinates"] = [
-                [coord[1], coord[0]]
-                for coord in coords
-            ]
-
             result["all_segments"] = []
+            result["rules"] = []
+
+            segment_statuses = set()
+            seen_rules = set()
 
             for feature in all_features:
 
-                segment = [
-                [coord[1], coord[0]]
-                for coord in feature["geometry"]["coordinates"]
-    ]
-                result["all_segments"].append(segment)
+                segment_props = feature["properties"]
+
+                weekday_text = segment_props["START_WEEKDAY"].lower()
+                cleaning_day = weekday_map[weekday_text]
+
+                start_hour = segment_props["START_TIME"] // 100
+                end_hour = segment_props["END_TIME"] // 100
+
+                segment_info = get_parking_info(
+                    cleaning_day,
+                    start_hour,
+                    end_hour
+                )
+                segment_statuses.add(
+                segment_info["status_class"]
+                )
+                rule_key = (
+                    segment_props["START_WEEKDAY"],
+                    start_hour,
+                    end_hour
+                )
+                if rule_key not in seen_rules:
+
+                    seen_rules.add(rule_key)
+
+                    result["rules"].append({
+                        "weekday": segment_props["START_WEEKDAY"],
+                        "start_hour": start_hour,
+                        "end_hour": end_hour,
+                        "status_class": segment_info["status_class"]
+                })
+
+                segment_info["coordinates"] = [
+                    [coord[1], coord[0]]
+                    for coord in feature["geometry"]["coordinates"]
+                ]
+
+                segment_info["weekday"] = segment_props["START_WEEKDAY"]
+                segment_info["start_hour"] = start_hour
+                segment_info["end_hour"] = end_hour
+
+                result["all_segments"].append(segment_info)
+
+            if "red" in segment_statuses:
+                result["status"] = "⚠️ Flera regler på gatan"
+                result["status_class"] = "orange"
+
+            elif "orange" in segment_statuses:
+                result["status"] = "🟠 Städning närmar sig"
+                result["status_class"] = "orange"
+
+            else:
+                result["status"] = "🟢 Parkering tillåten"
+                result["status_class"] = "green"
         else:
 
             result = {
@@ -156,7 +203,6 @@ def home():
         "cleaning_date": "-",
         "move_date": "-"
     }
-            print(result)
     return render_template(
         "index.html",
         result=result
